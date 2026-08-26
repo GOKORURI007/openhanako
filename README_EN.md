@@ -167,31 +167,59 @@ Electron desktop client. The container bundles the full server runtime
 (`bundle/`, `node`, `node_modules/`, packaged wrappers) on top of
 `node:24-bookworm-slim` and listens on `0.0.0.0:7777`.
 
-### Build the image
+### How the image is built
 
-The image is built on a Linux x64 host with Node 24 and Docker installed.
+There are two ways to get the image:
+
+**A. From the registry (recommended for production).** CI builds the image on
+every push to `main` and pushes a tagged image on a manual
+`workflow_dispatch` with a `version` input. The VPS only needs `pull` and
+`up`.
 
 ```bash
-# 1. Produces dist-server/linux-x64/ via scripts/build-server.mjs linux x64,
-#    then `docker build` it, then tags it hanako:dev-<git-sha>. The exact tag
-#    is also written to .docker-image-tag so compose can pick it up.
-node scripts/build-server-docker-image.mjs
+# Maintainer side — once per release:
+gh workflow run docker-server.yml -f version=0.451.0
+# CI re-tags the latest main-line build as
+#   ghcr.io/gokoruri007/openhanako:v0.451.0
+#   ghcr.io/gokoruri007/openhanako:latest
+```
 
-# 2. (Optional) Pin a different image tag.
-export IMAGE_TAG=dev
+**B. Build locally on the same Linux host.** Useful for one-off testing or
+when you want a `:dev-<sha>` image without going through CI. Requires Node
+24 and Docker on the host.
+
+```bash
+node scripts/build-server-docker-image.mjs
+# Image is now hanako:dev-<short-sha> locally.
+# To use it with compose, override the image line:
+#   image: hanako:dev-<short-sha>
 ```
 
 ### Run with compose
 
+On the VPS:
+
 ```bash
+git clone https://github.com/GOKORURI007/openhanako.git
+cd openhanako
+
 # Edit secrets/llm_api_key.txt (compose mounts it as a tmpfs secret).
 mkdir -p secrets && echo "$YOUR_LLM_API_KEY" > secrets/llm_api_key.txt
 
 # (Optional) Override the structured config.
 cp examples/hana-config.example.yaml hana-config.yaml && $EDITOR hana-config.yaml
 
+# Pull the latest image and start.
+docker compose pull
 docker compose up -d
 docker compose logs -f
+```
+
+To pin a specific release tag instead of `:latest`:
+
+```bash
+export IMAGE_TAG=v0.451.0
+docker compose pull && docker compose up -d
 ```
 
 ### Persistence

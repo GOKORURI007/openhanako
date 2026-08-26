@@ -1,25 +1,35 @@
 # docker-compose.yml — standalone HanaAgent server on a Linux host.
 #
-# End-to-end flow on the build host (Linux x64, Node 24 in PATH, Docker installed):
+# Default image is the registry build pushed by .github/workflows/docker-server.yml
+# (ghcr.io/gokoruri007/openhanako:latest). The CI workflow re-tags and pushes
+# on a manual workflow_dispatch with a `version` input; every push to main
+# refreshes the build cache. VPS therefore only needs `docker compose pull && up`.
 #
-#   # 1. Build the local server artifact and Docker image in one step.
-#   node scripts/build-server-docker-image.mjs
+# Quickstart on the VPS (after secrets/llm_api_key.txt is in place):
 #
-#   # 2. (Optional) Override IMAGE_TAG (default: tag written by step 1).
-#   export IMAGE_TAG=dev
-#
-#   # 3. Edit the `secrets:` block below to point at a real file. Compose v2
-#   #    treats the file as a tmpfs-mounted secret and never writes it to disk.
+#   git clone https://github.com/GOKORURI007/openhanako.git
+#   cd openhanako
 #   mkdir -p secrets && echo "$YOUR_LLM_API_KEY" > secrets/llm_api_key.txt
-#
-#   # 4. (Optional) Mount a structured config file at /etc/hanaagent/config.yaml.
-#   cp examples/hana-config.example.yaml hana-config.yaml && $EDITOR hana-config.yaml
-#
-#   # 5. Start.
+#   docker compose pull
 #   docker compose up -d
-#
-#   # 6. Tail logs.
 #   docker compose logs -f
+#
+# To pin a specific release version instead of :latest:
+#
+#   export IMAGE_TAG=v0.451.0
+#   docker compose pull && docker compose up -d
+#
+# To build the image locally on the same Linux host (skip CI entirely):
+#
+#   node scripts/build-server-docker-image.mjs
+#   docker compose -f docker-compose.local.yml up -d
+#
+# (docker-compose.local.yml is not provided; create it yourself with
+#  `image: hanako:dev-${short_sha}` if you want local-only builds.)
+#
+# Reverse-proxy / TLS termination are intentionally *outside* this container.
+# Bind 7777 to 127.0.0.1 on the host and let nginx / Caddy / Cloudflare Tunnel
+# handle the public face.
 #
 # Reverse-proxy / TLS termination are intentionally *outside* this container.
 # Bind 7777 to 127.0.0.1 on the host and let nginx / Caddy / Cloudflare Tunnel
@@ -29,7 +39,11 @@ name: hanaagent
 
 services:
   hanaagent:
-    image: hanako:${IMAGE_TAG:-dev}
+    # Default to the published ghcr.io image. To pin a specific version:
+    #   export IMAGE_TAG=v0.451.0
+    # To use a locally-built image instead (Linux host only):
+    #   docker compose -f docker-compose.local.yml up
+    image: ghcr.io/gokoruri007/openhanako:${IMAGE_TAG:-latest}
     container_name: hanaagent
     restart: unless-stopped
     ports:

@@ -170,31 +170,53 @@ npm run typecheck
 
 HanaAgent Server 也可以脱离 Electron 桌面端，以单一 Linux 容器形式独立运行。镜像基于 `node:24-bookworm-slim`，打包了完整 server runtime（`bundle/`、`node`、`node_modules/`、wrapper 脚本），默认监听 `0.0.0.0:7777`。
 
-### 构建镜像
+### 镜像如何构建
 
-镜像需在 Linux x64 主机上构建，要求环境已装 Node 24 和 Docker。
+两种方式：
+
+**A. 从 registry 拉（生产推荐）。** CI 在每次 push 到 `main` 时构建镜像，发布者通过手动 `workflow_dispatch` 触发推送打 tag。VPS 只需 `pull` + `up`。
 
 ```bash
-# 1. 先调用 scripts/build-server.mjs linux x64 产出 dist-server/linux-x64/，
-#    再 docker build，最后打成 hanako:dev-<git-sha>。具体 tag 也会写入
-#    .docker-image-tag 供 compose 读取。
-node scripts/build-server-docker-image.mjs
+# 维护者侧 —— 每次发布：
+gh workflow run docker-server.yml -f version=0.451.0
+# CI 把最近一次 main-line build 重打成：
+#   ghcr.io/gokoruri007/openhanako:v0.451.0
+#   ghcr.io/gokoruri007/openhanako:latest
+```
 
-# 2. （可选）覆盖 image tag。
-export IMAGE_TAG=dev
+**B. 在同一台 Linux 主机本地构建。** 适合一次性测试或不经过 CI 直接得 `:dev-<sha>` 镜像。要求主机装 Node 24 + Docker。
+
+```bash
+node scripts/build-server-docker-image.mjs
+# 镜像 tag: hanako:dev-<short-sha>
+# 用 compose 启动时把 image 改成 hanako:dev-<short-sha>
 ```
 
 ### 用 compose 启动
 
+VPS 上：
+
 ```bash
+git clone https://github.com/GOKORURI007/openhanako.git
+cd openhanako
+
 # 编辑 secrets/llm_api_key.txt（compose 以 tmpfs secret 形式挂载，不落盘）。
 mkdir -p secrets && echo "$你的_LLM_API_KEY" > secrets/llm_api_key.txt
 
 # （可选）覆盖结构化配置文件。
 cp examples/hana-config.example.yaml hana-config.yaml && $EDITOR hana-config.yaml
 
+# 拉镜像 + 启动
+docker compose pull
 docker compose up -d
 docker compose logs -f
+```
+
+想钉死特定版本（不跟 `:latest`）：
+
+```bash
+export IMAGE_TAG=v0.451.0
+docker compose pull && docker compose up -d
 ```
 
 ### 数据持久化
