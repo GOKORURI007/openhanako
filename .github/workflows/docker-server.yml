@@ -1,23 +1,31 @@
 name: Docker server image
 
-# Build the standalone HanaAgent server Docker image on every push to main,
-# and on a manual dispatch re-tag the most recent build and push it to
-# GitHub Container Registry (ghcr.io) so a plain `docker compose pull && up`
-# on the production VPS is enough to roll forward.
+# Build the standalone HanaAgent server Docker image and (optionally) push it
+# to GitHub Container Registry (ghcr.io). Manual trigger only — runs on
+# `workflow_dispatch`.
 #
-# Local-build convenience: on the build host (the Linux machine with Node 24
-# and Docker) you can skip this workflow entirely and run
+# Inputs:
+#   version  If provided (e.g. "0.451.0"), the workflow re-tags the freshly
+#            built image as `v<version>` and `:latest`, pushes both to ghcr.io,
+#            and flips the package visibility to public. If left blank the
+#            workflow only runs the build step (handy for verifying the image
+#            builds without publishing).
+#
+# After a successful run with `version` set, a VPS that runs
+#   docker compose pull && docker compose up -d
+# picks up the new image. Pin a specific release by exporting
+# IMAGE_TAG=v0.451.0 before `docker compose up`.
+#
+# Local-build convenience: on a Linux host with Node 24 + Docker, you can skip
+# this workflow entirely and run
 #   node scripts/build-server-docker-image.mjs
-# which builds the same image and tags it hanako:dev-<sha>. CI just adds the
-# registry leg.
+# which builds the same image locally.
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       version:
-        description: "Release tag (e.g. v0.451.0). Leave blank to skip the publish step and only refresh the build cache."
+        description: "Release tag without leading 'v' (e.g. 0.451.0). Leave blank to build only without pushing."
         required: false
         default: ""
 
@@ -44,13 +52,30 @@ jobs:
       # and tolerates `packDualKindSeed`'s Apple-notary failure on Linux
       # because the artifact on disk is already complete by then.
       - name: Build server image
+        run: node scripts/build-server-docker-image.mjs
+
+      - name: Smoke-test image
         run: |
-          node scripts/build-server-docker-image.mjs
-          SHA=$(git rev-parse --short HEAD)
-          echo "image-tag=hanako:dev-$SHA" >> "$GITHUB_OUTPUT"
+          # Run the built image briefly and confirm it starts up.
+          docker run --rm --detach \
+            --name hanaagent-smoke \
+            -e HANA_HOME=/hana/home \
+            -e HANA_INTERNAL_STANDALONE_RUNTIME_SMOKE=1 \
+            hanako:dev-$(git rev-parse --short HEAD) \
+            || (echo "container failed to start"; exit 1)
+          sleep 5
+          docker logs hanaagent-smoke || true
+          docker stop hanaagent-smoke || true
+
+      - name: Skip publish (no version input)
+        id: skip
+        if: inputs.version == ''
+        run: |
+          echo "No version provided; skipping push."
+          echo "skipped=true" >> "$GITHUB_OUTPUT"
 
       - name: Login to ghcr.io
-        if: github.event_name == 'workflow_dispatch' && inputs.version != ''
+        if: inputs.version != ''
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -58,27 +83,43 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Re-tag and push
-        if: github.event_name == 'workflow_dispatch' && inputs.version != ''
+        if: inputs.version != ''
         env:
           VERSION: ${{ inputs.version }}
         run: |
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          SHA=$(git rev-parse --short HEAD)
           REPO=$(echo "${{ github.repository }}" | cut -d/ -f2)
-          # Make the package public so a VPS can `docker pull` without login.
-          # (Visibility change needs packages: write on the job; token above
-          # already grants that.)
+          SHA=$(git rev-parse --short HEAD)
           for t in "v${VERSION}" latest; do
             docker tag "hanako:dev-${SHA}" "ghcr.io/${OWNER}/${REPO}:${t}"
             docker push "ghcr.io/${OWNER}/${REPO}:${t}"
           done
-          # Best-effort: flip the package to public via the GitHub API. If
-          # this fails (e.g. organisation policy disallows public packages),
-          # the push above still succeeds and operators can `docker login
-          # ghcr.io` with a token that has packages: read.
-          curl --silent --show-error --fail \
-            --user "${OWNER}:${{ secrets.GITHUB_TOKEN }}" \
+
+      - name: Set package visibility to public
+        if: inputs.version != ''
+        env:
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Try both endpoints: user-owned packages use /users/{owner}/packages,
+          # org-owned packages use /orgs/{owner}/packages. One will 404; the
+          # other succeeds. We don't fail the workflow if visibility flip
+          # fails — the push above already succeeded, and a private package
+          # can still be pulled with `docker login ghcr.io`.
+          set +e
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --user "${OWNER}:${TOKEN}" \
             -X PATCH \
             -H "Accept: application/vnd.github+json" \
-            https://api.github.com/orgs/${OWNER}/packages/container/${REPO} \
-            -d '{"visibility":"public"}' || true
+            "https://api.github.com/users/${OWNER}/packages/container/${REPO}" \
+            -d '{"visibility":"public"}')
+          if [ "$STATUS" != "200" ]; then
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              --user "${OWNER}:${TOKEN}" \
+              -X PATCH \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/orgs/${OWNER}/packages/container/${REPO}" \
+              -d '{"visibility":"public"}')
+          fi
+          echo "visibility flip HTTP status: $STATUS"

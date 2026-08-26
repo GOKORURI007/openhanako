@@ -1,12 +1,6 @@
 name: Mirror Release to AtomGit
 
 on:
-  release:
-    types:
-      - published
-      - edited
-      - prereleased
-      - released
   workflow_dispatch:
     inputs:
       mode:
