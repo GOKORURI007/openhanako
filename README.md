@@ -166,6 +166,59 @@ npm run typecheck
 
 [Apache License 2.0](LICENSE)
 
+## 独立 Docker 部署
+
+HanaAgent Server 也可以脱离 Electron 桌面端，以单一 Linux 容器形式独立运行。镜像基于 `node:24-bookworm-slim`，打包了完整 server runtime（`bundle/`、`node`、`node_modules/`、wrapper 脚本），默认监听 `0.0.0.0:7777`。
+
+### 构建镜像
+
+镜像需在 Linux x64 主机上构建，要求环境已装 Node 24 和 Docker。
+
+```bash
+# 1. 先调用 scripts/build-server.mjs linux x64 产出 dist-server/linux-x64/，
+#    再 docker build，最后打成 hanako:dev-<git-sha>。具体 tag 也会写入
+#    .docker-image-tag 供 compose 读取。
+node scripts/build-server-docker-image.mjs
+
+# 2. （可选）覆盖 image tag。
+export IMAGE_TAG=dev
+```
+
+### 用 compose 启动
+
+```bash
+# 编辑 secrets/llm_api_key.txt（compose 以 tmpfs secret 形式挂载，不落盘）。
+mkdir -p secrets && echo "$你的_LLM_API_KEY" > secrets/llm_api_key.txt
+
+# （可选）覆盖结构化配置文件。
+cp examples/hana-config.example.yaml hana-config.yaml && $EDITOR hana-config.yaml
+
+docker compose up -d
+docker compose logs -f
+```
+
+### 数据持久化
+
+数据存在名为 `hana-data` 的 named volume 中，容器内挂载到 `/hana/home`。备份用标准 Docker 写法：
+
+```bash
+docker run --rm \
+  -v hana-data:/hana/home \
+  -v $(pwd)/backup:/backup \
+  busybox tar czf /backup/hana-data-$(date +%Y%m%d).tgz -C /hana/home .
+```
+
+### 反向代理与 TLS
+
+容器仅把 7777 绑到 `127.0.0.1`。生产部署请外接 nginx / Caddy / Cloudflare Tunnel 处理 TLS 与公开域名——镜像**不**内置反代。
+
+### 注意事项
+
+- 镜像里装了 `bubblewrap`，供 agent 的 bash sandbox 使用。缺失时 agent 的 `bash` 工具调用会 fail-closed，返回 `sandbox.osRequired`，不会退化到 host 直执行。
+- server 进程以 uid 1000（上游镜像内置的 `node` user）身份运行。容器 capabilities 全部 drop，只保留运行时必需的最小集合。
+- API key 走 Docker secrets（tmpfs，挂载到 `/run/secrets/<name>`）；OAuth refresh token 留在 persistent volume。
+- 镜像只支持 Linux 服务器。现有的 Windows `HanaCore` archive 是另一条独立交付线，不在此镜像内。
+
 ## 链接
 
 > 仓库和 release 地址在当前迁移阶段仍保留旧的 `openhanako` URL，后续仓库 rename 会单独执行。

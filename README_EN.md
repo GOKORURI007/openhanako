@@ -160,6 +160,70 @@ npm run typecheck
 
 [Apache License 2.0](LICENSE)
 
+## Standalone Docker deployment
+
+HanaAgent Server can also run as a single Linux container, independent of the
+Electron desktop client. The container bundles the full server runtime
+(`bundle/`, `node`, `node_modules/`, packaged wrappers) on top of
+`node:24-bookworm-slim` and listens on `0.0.0.0:7777`.
+
+### Build the image
+
+The image is built on a Linux x64 host with Node 24 and Docker installed.
+
+```bash
+# 1. Produces dist-server/linux-x64/ via scripts/build-server.mjs linux x64,
+#    then `docker build` it, then tags it hanako:dev-<git-sha>. The exact tag
+#    is also written to .docker-image-tag so compose can pick it up.
+node scripts/build-server-docker-image.mjs
+
+# 2. (Optional) Pin a different image tag.
+export IMAGE_TAG=dev
+```
+
+### Run with compose
+
+```bash
+# Edit secrets/llm_api_key.txt (compose mounts it as a tmpfs secret).
+mkdir -p secrets && echo "$YOUR_LLM_API_KEY" > secrets/llm_api_key.txt
+
+# (Optional) Override the structured config.
+cp examples/hana-config.example.yaml hana-config.yaml && $EDITOR hana-config.yaml
+
+docker compose up -d
+docker compose logs -f
+```
+
+### Persistence
+
+Data lives in the named volume `hana-data`, mounted at `/hana/home` inside the
+container. Back it up with the standard Docker recipe:
+
+```bash
+docker run --rm \
+  -v hana-data:/hana/home \
+  -v $(pwd)/backup:/backup \
+  busybox tar czf /backup/hana-data-$(date +%Y%m%d).tgz -C /hana/home .
+```
+
+### Reverse proxy and TLS
+
+The container binds 7777 to `127.0.0.1` only. Put nginx / Caddy / Cloudflare
+Tunnel in front of it for TLS and a public hostname — the image deliberately
+ships no reverse proxy.
+
+### Caveats
+
+- `bubblewrap` is installed inside the image so the agent's bash sandbox can
+  run. Without it, every agent `bash` tool call fails closed with
+  `sandbox.osRequired` instead of falling back to host execution.
+- The server process runs as uid 1000 (the upstream `node` user). Container
+  capabilities drop everything except the minimum needed for the runtime.
+- API keys should come from Docker secrets (mounted tmpfs at
+  `/run/secrets/<name>`); OAuth refresh tokens stay on the persistent volume.
+- The image is for Linux servers only. The existing Windows `HanaCore` archive
+  is a separate delivery line and is not bundled here.
+
 ## Links
 
 > The repository and release URLs intentionally remain under the legacy `openhanako` path during the current migration. The repository rename is a separate later step.
