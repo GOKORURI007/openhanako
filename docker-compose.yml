@@ -53,9 +53,9 @@ services:
       - "127.0.0.1:7777:7777"
     environment:
       HANA_HOME: /hana/home
-      # server reads HANA_HOST/HANA_PORT (not HOST/PORT) — see
-      # server/index.ts:353 and core/server-network-config.ts:77.
-      HANA_HOST: 0.0.0.0
+      # Only HANA_PORT is read by the server (server/index.ts:353). The bind
+      # host comes from HANA_HOME/server-network.json (loopback by default);
+      # switch to LAN mode via `PUT /api/access/network` after first start.
       HANA_PORT: 7777
       LOG_LEVEL: ${LOG_LEVEL:-info}
       TZ: ${TZ:-UTC}

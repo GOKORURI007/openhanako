@@ -39,9 +39,9 @@ COPY --chown=1000:1000 dist-server/linux-x64/ /app/
 RUN mkdir -p /hana/home && chown -R 1000:1000 /hana/home
 
 ENV HANA_HOME=/hana/home \
-    # server reads HANA_HOST/HANA_PORT, not HOST/PORT. See server/index.ts:353
-    # and core/server-network-config.ts:77.
-    HANA_HOST=0.0.0.0 \
+    # Only HANA_PORT is read by the server (server/index.ts:353). The bind
+    # host comes from HANA_HOME/server-network.json (loopback by default);
+    # switch to LAN mode via `PUT /api/access/network` after first start.
     HANA_PORT=7777 \
     HOME=/hana/home \
     NODE_ENV=production \
