@@ -77,7 +77,15 @@ function parseArgs(argv) {
 }
 
 function artifactMissing() {
-  return !fs.existsSync(path.join(ARTIFACT_DIR, "bundle", "index.js"));
+  // All three must exist; a partial artifact (e.g. vite bundle wrote but
+  // node_modules install or node binary copy failed) should not pass.
+  return (
+    !fs.existsSync(path.join(ARTIFACT_DIR, "bundle", "index.js")) ||
+    !fs.existsSync(path.join(ARTIFACT_DIR, "bundle", "cli.js")) ||
+    !fs.existsSync(path.join(ARTIFACT_DIR, "node")) ||
+    !fs.existsSync(path.join(ARTIFACT_DIR, "hana-server")) ||
+    !fs.existsSync(path.join(ARTIFACT_DIR, "package.json"))
+  );
 }
 
 async function ensureArtifact(skipBuild) {

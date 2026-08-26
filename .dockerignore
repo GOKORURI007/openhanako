@@ -1,4 +1,6 @@
-# Source-level ignores. The Dockerfile only COPYs dist-server/linux-x64/.
+# Source-level ignores. The Dockerfile only COPYs dist-server/linux-x64/,
+# which itself references desktop/dist-renderer/. Both must be reachable from the
+# build context even though .gitignore-style might suggest otherwise.
 .git/
 .github/
 .scratch/
@@ -7,7 +9,12 @@
 # Build outputs we never want inside the image build context.
 node_modules/
 dist/
+
+# dist-server is normally ignored (large, regenerable), but the Linux x64
+# tree is the *whole point* of this image — keep it.
 dist-server/
+!dist-server/linux-x64/
+!dist-server/linux-x64/**
 dist-server-open/
 dist-server-bundle/
 dist-server-artifact/
@@ -16,7 +23,10 @@ dist-renderer-artifact/
 dist-sandbox/
 dist-computer-use/
 dist-open-export/
-desktop/dist-renderer/
+
+# desktop/dist-renderer is produced by `npm run build:renderer` inside the
+# workflow; the build context needs to ship whatever it generates through to
+# COPY. Likewise dist-splash (produced by `build:splash`).
 desktop/dist-splash/
 desktop/main.bundle.cjs
 desktop/preload.bundle.cjs

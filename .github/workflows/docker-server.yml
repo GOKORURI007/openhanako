@@ -47,6 +47,14 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      # Renderer assets are required by scripts/build-server-runtime-assets.mjs:
+      # `copyServerRuntimeAssets` hard-asserts `desktop/dist-renderer/` exists
+      # when assembling the full-composition server tree. `npm run build:client`
+      # also rebuilds main/preload/splash/theme, which are Electron-only and
+      # unrelated to the server image, so we run just the renderer step.
+      - name: Build renderer assets
+        run: npm run build:renderer
+
       # `scripts/build-server-docker-image.mjs` already wraps
       # `scripts/build-server.mjs linux x64` (artifact build) + `docker build`,
       # and tolerates `packDualKindSeed`'s Apple-notary failure on Linux
