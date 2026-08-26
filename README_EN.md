@@ -238,9 +238,38 @@ docker run --rm \
 
 ### Reverse proxy and TLS
 
-The container binds 7777 to `127.0.0.1` only. Put nginx / Caddy / Cloudflare
-Tunnel in front of it for TLS and a public hostname — the image deliberately
-ships no reverse proxy.
+Put nginx / Caddy / Cloudflare Tunnel in front of it for TLS and a public
+hostname — the image deliberately ships no reverse proxy. Caddy's
+`reverse_proxy` directive transparently upgrades WebSocket connections, so
+`https://hanako.example.com/ws` reaches the server's `ws://` endpoint without
+extra config.
+
+### Bind host mode
+
+By default the server creates `HANA_HOME/server-network.json` with
+`mode: "loopback"` and binds `127.0.0.1:7777`. That works for a host
+reverse proxy on `127.0.0.1:7777` or direct localhost access. **It does NOT
+work** if a reverse proxy is on the same Docker network and reaches the
+container by service name — the destination IP is the container's bridge
+address, not 127.0.0.1, and the kernel rejects the connection.
+
+For the "Caddy on the same Docker network" layout, switch to LAN mode so the
+server binds `0.0.0.0`:
+
+```bash
+# On the VPS, with the container stopped or before first start.
+cp examples/server-network.lan.json ./server-network.json
+# Then edit docker-compose.yml to uncomment the
+# `./server-network.json:/hana/home/server-network.json:ro` bind mount under
+# the hanaagent service's volumes.
+docker compose up -d
+docker compose logs -f
+# The log line should now read "HanaAgent Server 运行在 http://0.0.0.0:7777"
+# (or 0.0.0.0:your-port).
+```
+
+To revert to loopback mode (e.g. you removed the reverse proxy from the
+network), swap the file for `server-network.loopback.json` and restart.
 
 ### Caveats
 

@@ -233,13 +233,32 @@ docker run --rm \
 
 ### 反向代理与 TLS
 
-容器仅把 7777 绑到 `127.0.0.1`。生产部署请外接 nginx / Caddy / Cloudflare Tunnel 处理 TLS 与公开域名——镜像**不**内置反代。
+生产部署请外接 nginx / Caddy / Cloudflare Tunnel 处理 TLS 与公开域名——镜像**不**内置反代。Caddy 的 `reverse_proxy` directive 透明处理 WebSocket upgrade，所以 `https://hanako.example.com/ws` 能直接到 server 的 `ws://` endpoint，不需额外配置。
+
+### Bind host mode
+
+server 首次启动会创建 `HANA_HOME/server-network.json`，默认 `mode: "loopback"`，bind `127.0.0.1:7777`。这适合 host 上的反代（绑 127.0.0.1:7777）或本机直连。**但如果反代在同一个 Docker network**（比如 Caddy 也跑在 container 里），通过 service name 访问 server 时目标地址是容器 bridge IP，**不是** 127.0.0.1，kernel 直接拒——**连不上**。
+
+Caddy 同 network 部署需要切到 LAN mode（server bind 0.0.0.0）：
+
+```bash
+# 在 VPS 上，容器停掉或 first start 前:
+cp examples/server-network.lan.json ./server-network.json
+# 然后编辑 docker-compose.yml，把 hanaagent service 的 volumes 里那行
+# `./server-network.json:/hana/home/server-network.json:ro` 取消注释
+docker compose up -d
+docker compose logs -f
+# log 应看到 "HanaAgent Server 运行在 http://0.0.0.0:7777"
+# （或 0.0.0.0:你的端口）
+```
+
+回到 loopback mode（去掉 network 上的反代时）：换 `server-network.loopback.json` 后重启。
 
 ### 注意事项
 
 - 镜像里装了 `bubblewrap`，供 agent 的 bash sandbox 使用。缺失时 agent 的 `bash` 工具调用会 fail-closed，返回 `sandbox.osRequired`，不会退化到 host 直执行。
 - server 进程以 uid 1000（上游镜像内置的 `node` user）身份运行。容器 capabilities 全部 drop，只保留运行时必需的最小集合。
-- API key 走 Docker secrets（tmpfs，挂载到 `/run/secrets/<name>`）；OAuth refresh token 留在 persistent volume。
+- LLM provider / API key 通过 Web UI（Settings → Providers）配置，写到 `hana-data` volume 的 `auth.json` / `added-models.yaml`，重启容器不丢。
 - 镜像只支持 Linux 服务器。现有的 Windows `HanaCore` archive 是另一条独立交付线，不在此镜像内。
 
 ## 链接

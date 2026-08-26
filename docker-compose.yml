@@ -62,6 +62,15 @@ services:
     volumes:
       - hana-data:/hana/home
       - ./hana-config.yaml:/etc/hanaagent/config.yaml:ro
+      # The server's bind host (loopback vs lan) comes from
+      # HANA_HOME/server-network.json, which is created on first start with
+      # mode=loopback. To have the server accept requests from another Docker
+      # container on the same network (e.g. a Caddy reverse proxy), uncomment
+      # the line below after copying examples/server-network.lan.json to
+      # ./server-network.json on the host. Bind-mounting the file means the
+      # host stays the source of truth and `docker compose restart` re-reads
+      # it cleanly. The hana-data named volume still owns everything else.
+      # - ./server-network.json:/hana/home/server-network.json:ro
     cap_drop:
       - ALL
     cap_add:
