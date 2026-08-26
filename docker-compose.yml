@@ -5,13 +5,16 @@
 # on a manual workflow_dispatch with a `version` input; every push to main
 # refreshes the build cache. VPS therefore only needs `docker compose pull && up`.
 #
-# Quickstart on the VPS (after secrets/llm_api_key.txt is in place):
+# Quickstart on the VPS (LLM provider keys are configured through the web UI
+# after first start — no host-side secret file is needed):
 #
 #   git clone https://github.com/GOKORURI007/openhanako.git
 #   cd openhanako
-#   mkdir -p secrets && echo "$YOUR_LLM_API_KEY" > secrets/llm_api_key.txt
 #   docker compose pull
 #   docker compose up -d
+#   # Open https://hanako.example.com and complete the onboarding flow
+#   # (Settings → Providers → add provider + API key). The key is written to
+#   # the hana-data volume and survives container restarts.
 #   docker compose logs -f
 #
 # To pin a specific release version instead of :latest:
@@ -57,8 +60,6 @@ services:
     volumes:
       - hana-data:/hana/home
       - ./hana-config.yaml:/etc/hanaagent/config.yaml:ro
-    secrets:
-      - llm_api_key
     cap_drop:
       - ALL
     cap_add:
@@ -83,7 +84,3 @@ services:
 
 volumes:
   hana-data:
-
-secrets:
-  llm_api_key:
-    file: ./secrets/llm_api_key.txt

@@ -200,9 +200,6 @@ VPS 上：
 git clone https://github.com/GOKORURI007/openhanako.git
 cd openhanako
 
-# 编辑 secrets/llm_api_key.txt（compose 以 tmpfs secret 形式挂载，不落盘）。
-mkdir -p secrets && echo "$你的_LLM_API_KEY" > secrets/llm_api_key.txt
-
 # （可选）覆盖结构化配置文件。
 cp examples/hana-config.example.yaml hana-config.yaml && $EDITOR hana-config.yaml
 
@@ -210,6 +207,10 @@ cp examples/hana-config.example.yaml hana-config.yaml && $EDITOR hana-config.yam
 docker compose pull
 docker compose up -d
 docker compose logs -f
+
+# 现在打开 https://hanako.example.com 完成 onboarding 流程
+# （Settings → Providers → 加 provider + 填 API key）。API key 会存到
+# `hana-data` volume，重启容器不丢，后续升级只需 `docker compose pull && up -d`。
 ```
 
 想钉死特定版本（不跟 `:latest`）：

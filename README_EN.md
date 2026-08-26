@@ -203,9 +203,6 @@ On the VPS:
 git clone https://github.com/GOKORURI007/openhanako.git
 cd openhanako
 
-# Edit secrets/llm_api_key.txt (compose mounts it as a tmpfs secret).
-mkdir -p secrets && echo "$YOUR_LLM_API_KEY" > secrets/llm_api_key.txt
-
 # (Optional) Override the structured config.
 cp examples/hana-config.example.yaml hana-config.yaml && $EDITOR hana-config.yaml
 
@@ -213,6 +210,11 @@ cp examples/hana-config.example.yaml hana-config.yaml && $EDITOR hana-config.yam
 docker compose pull
 docker compose up -d
 docker compose logs -f
+
+# Now open https://hanako.example.com and complete the onboarding flow
+# (Settings → Providers → add provider + API key). The key is written to
+# the `hana-data` volume and survives container restarts, so subsequent
+# upgrades only need `docker compose pull && up -d`.
 ```
 
 To pin a specific release tag instead of `:latest`:
