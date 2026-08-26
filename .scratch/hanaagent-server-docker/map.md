@@ -26,6 +26,9 @@ repo 拥有**一条独立的 Docker 交付线**，让 hanaagent server 能在 Li
 - [Q9 配置: env 与 mount config 都支持](./issues/09-config-priority.md) — env 优先于 mount config；文档明示优先级，secrets 走 docker secrets 或 mount file
 - [Q10 tag: semver + git-sha + latest](./issues/10-image-tag-strategy.md) — CI 产出 git-sha tag；手动发布时 re-tag 为 v<version> + latest
 - [Q11 运行身份: non-root (nodejs builtin)](./issues/11-run-as-nonroot.md) — uid 1000；HANA_HOME 文件拥有者由 entrypoint chown
+- [R1 research: Linux server runtime 来源与 native modules 兼容性](./issues/12-research-linux-runtime.md) — `dist-server/linux-x64/` 不存在；`scripts/build-server.mjs linux x64` 可产 artifact，sh wrapper 直接 exec `node bootstrap.js`；native modules 需匹配容器 glibc/musl；`bwrap` 由容器自备、`HANA_HOME` 默认 `~/.hanako`、MinGit 仅 Windows
+- [R2 research: HANA_HOME 数据结构 + 与 desktop 互通](./issues/13-research-hanahome-schema.md) — HANA_HOME layout **fully portable**、无 Windows 硬编码；25 个 immediate subdirs + root state files；multi-writer **not supported**（同宅互斥闸 probe 假设单 host）；migration 只需 `tar` + Electron-only 子树 exclude 列表；DATA_EPOCH=1 永远 pinned，无 checkpoint restore path
+- [R3 research: 容器内安全机制有效性](./issues/14-research-security-in-container.md) — PathGuard 全平台 neutral、rebase 自动；`bwrap` 缺失 fail-closed；uid 1000 OK as long as `USER 1000` before `node` exec；Docker caps `--cap-drop=ALL` + 限定 `--cap-add` 已足；API keys 应走 `/run/secrets`、OAuth tokens 留 persistent volume
 
 ## Not yet specified
 
@@ -35,8 +38,15 @@ repo 拥有**一条独立的 Docker 交付线**，让 hanaagent server 能在 Li
 - entrypoint 脚本形态——是 shell wrapper 还是 Node entrypoint？未决定
 - 多容器编排（Postgres / Redis 等）—— destination 是 single-container，未明确禁止，但 compose v2 文件允许不含
 - 日志收集策略（json-file driver 限额 / journald / 外接）—— 未决定
-- Desktop ↔ Docker 数据互通/迁移——R2 的子问题，雾中
 - 镜像 release notes 模板 / 自动生成 changelog 切片 —— 未决定
+- 实际在 Linux host build + bookworm container smoke（验证 R1 "build script 自带 smoke" 假设）——HITL task，需要 Linux 环境
+- Windows ACL 状态在跨 host migrate 时是否要 strip——R2 gap 子问题
+- Desktop-only subpaths 分类（`host-portable` / `host-locked` / `optional-on-server`）—— R2 gap，未来 ticket
+- `HANA_ACCESS_MODE=full-access` 在 Docker 是否 pin——R3 gap
+- well-known skill paths (`$HOME/.claude/skills` etc.) 是否配置化——R3 gap
+- `HANA_PROVIDER_<ID>_API_KEY` / per-provider secrets env loader 具体契约——R3 answer §6 提及，但具体 env 命名 + 优先级未 spec
+- secret-fs 在 non-POSIX volume 上 warning surface——R3 gap
+- DATA_EPOCH 真实 bump 后 `hana data restore` 在 Linux volume 上的验证——R2 gap，DATA_EPOCH=1 当前不触发
 
 ## Out of scope
 
@@ -47,3 +57,5 @@ repo 拥有**一条独立的 Docker 交付线**，让 hanaagent server 能在 Li
 - Windows 容器镜像（destination 限定 Linux 服务器）
 - Mac Catalyst / Mac native 容器化（与 Q3 类似，独立部署面）
 - agent runtime 的 native module 重编译——除非 R1 报必要 issue，否则不动
+- 多容器编排（Postgres / Redis 等）——destination 是 single-container per host（Q6 + Q7），多容器不在本 effort 范围
+- DATA_EPOCH 真实 bump 后 `hana data restore` 在 Linux volume 上的验证——R2 gap 提的；DATA_EPOCH=1 当前 pinned（`shared/contract-versions.cjs:64`），bump 是产品演进的事，不在本 effort
