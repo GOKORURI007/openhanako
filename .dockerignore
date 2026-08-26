@@ -1,0 +1,56 @@
+# Source-level ignores. The Dockerfile only COPYs dist-server/linux-x64/.
+.git/
+.github/
+.scratch/
+.cache/
+
+# Build outputs we never want inside the image build context.
+node_modules/
+dist/
+dist-server/
+dist-server-open/
+dist-server-bundle/
+dist-server-artifact/
+dist-standalone/
+dist-renderer-artifact/
+dist-sandbox/
+dist-computer-use/
+dist-open-export/
+desktop/dist-renderer/
+desktop/dist-splash/
+desktop/main.bundle.cjs
+desktop/preload.bundle.cjs
+
+# Vendored / runtime artifacts that should not bloat the build context.
+vendor/
+inbox/
+
+# Test fixtures and the test runner itself.
+tests/
+*.test.ts
+*.test.tsx
+*.spec.ts
+
+# Logs and crash dumps.
+*.log
+logs/
+
+# Editor / OS scratch.
+.DS_Store
+.vscode/
+.idea/
+*.code-workspace
+
+# AI / agent artifacts that should never end up in the image.
+.claude/
+.agents/skills/
+
+# Hana-agent-internal scratch files (transient, never source-of-truth).
+devlog/
+tmp/
+test-results/
+
+# The Dockerfile and compose file themselves; harmless but pointless.
+Dockerfile
+.dockerignore
+docker-compose.yml
