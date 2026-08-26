@@ -41,14 +41,10 @@ function log(line) {
   process.stdout.write(`${line}\n`);
 }
 
-function runStep(label, command, args, opts = {}) {
+function runStep(label, command, args, opts) {
+  const merged = Object.assign({ cwd: ROOT, stdio: ["ignore", "inherit", "inherit"], shell: false }, opts || {});
   log(`[docker-image] ${label}: ${command} ${args.join(" ")}`);
-  const result = spawnSync(command, args, {
-    cwd: ROOT,
-    stdio: ["ignore", "inherit", "inherit"],
-    shell: false,
-    ...opts,
-  });
+  const result = spawnSync(command, args, merged);
   if (result.error) {
     throw new Error(`[docker-image] ${label} failed to start: ${result.error.message}`);
   }
@@ -64,7 +60,6 @@ function shortGitSha() {
   if (result.status === 0 && result.stdout) {
     return result.stdout.trim();
   }
-  // Fall back to "dirty-<mtime>" if git is unavailable or repo has no commits.
   const stamp = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14);
   return `dirty-${stamp}`;
 }
@@ -80,46 +75,51 @@ function parseArgs(argv) {
   return args;
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
+function artifactMissing() {
+  return !fs.existsSync(path.join(ARTIFACT_DIR, "bundle", "index.js"));
+}
 
-  if (!args.noBuild) {
-    if (!fs.existsSync(path.join(ARTIFACT_DIR, "bundle", "index.js"))) {
-      log(`[docker-image] artifact missing at ${ARTIFACT_DIR}; building it now`);
-      const build = runStep("artifact", process.execPath, [
-        path.join("scripts", "build-server.mjs"),
-        "linux",
-        "x64",
-      ]);
-      // build-server.mjs ends with `packDualKindSeed`, which is Apple-notary
-      // bookkeeping and fails on Linux. The artifact on disk is already
-      // complete by then; ignore that specific failure and only re-throw if
-      // the artifact is still missing.
-      if (build.status !== 0 && !fs.existsSync(path.join(ARTIFACT_DIR, "bundle", "index.js"))) {
-        throw new Error(
-          `[docker-image] scripts/build-server.mjs linux x64 failed (exit ${build.status}) and produced no artifact`,
-        );
-      }
-    } else {
-      log(`[docker-image] artifact already present at ${ARTIFACT_DIR}; skipping rebuild`);
-    }
-  } else {
-    if (!fs.existsSync(path.join(ARTIFACT_DIR, "bundle", "index.js")) {
-      throw new Error(
-        `[docker-image] --no-build passed but ${ARTIFACT_DIR}/bundle/index.js is missing`,
-      );
-    }
+async function ensureArtifact(skipBuild) {
+  if (!artifactMissing()) {
+    log(`[docker-image] artifact already present at ${ARTIFACT_DIR}; skipping rebuild`);
+    return;
   }
+  if (skipBuild) {
+    throw new Error(`[docker-image] --no-build passed but ${ARTIFACT_DIR}/bundle/index.js is missing`);
+  }
+  log(`[docker-image] artifact missing at ${ARTIFACT_DIR}; building it now`);
+  const build = runStep(
+    "artifact",
+    process.execPath,
+    [path.join("scripts", "build-server.mjs"), "linux", "x64"],
+  );
+  // build-server.mjs ends with `packDualKindSeed`, which is Apple-notary
+  // bookkeeping and fails on Linux. The artifact on disk is already
+  // complete by then; ignore that specific failure and only re-throw if
+  // the artifact is still missing.
+  if (build.status !== 0 && artifactMissing()) {
+    throw new Error(
+      `[docker-image] scripts/build-server.mjs linux x64 failed (exit ${build.status}) and produced no artifact`,
+    );
+  }
+}
 
-  const tag = args.tag ?? `hanako:dev-${shortGitSha()}`;
+async function dockerBuild(tag) {
   log(`[docker-image] building image ${tag}`);
-
   const build = runStep("docker build", "docker", ["build", "-t", tag, "."], {
-    env: { ...process.env, DOCKER_BUILDKIT: "1" },
+    env: Object.assign({}, process.env, { DOCKER_BUILDKIT: "1" }),
   });
   if (build.status !== 0) {
     throw new Error(`[docker-image] docker build failed (exit ${build.status})`);
   }
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const tag = args.tag || `hanako:dev-${shortGitSha()}`;
+
+  await ensureArtifact(args.noBuild);
+  await dockerBuild(tag);
 
   fs.writeFileSync(TAG_FILE, `${tag}\n`, "utf8");
   log(`[docker-image] wrote ${TAG_FILE} -> ${tag}`);
