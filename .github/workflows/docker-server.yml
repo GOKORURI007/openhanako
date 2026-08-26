@@ -1,33 +1,27 @@
 name: Docker server image
 
-# Build the standalone HanaAgent server Docker image and (optionally) push it
-# to GitHub Container Registry (ghcr.io). Manual trigger only — runs on
-# `workflow_dispatch`.
+# Build the standalone HanaAgent server Docker image and push it to GitHub
+# Container Registry (ghcr.io). Manual trigger only — runs on
+# `workflow_dispatch`. The `version` input is required because every run is
+# intended to publish; use the local `scripts/build-server-docker-image.mjs`
+# on a Linux host if you only want to verify the image builds.
 #
 # Inputs:
-#   version  If provided (e.g. "0.451.0"), the workflow re-tags the freshly
-#            built image as `v<version>` and `:latest`, pushes both to ghcr.io,
-#            and flips the package visibility to public. If left blank the
-#            workflow only runs the build step (handy for verifying the image
-#            builds without publishing).
+#   version  Release tag without the leading 'v' (e.g. "0.451.0"). The image
+#            is re-tagged as `v<version>` and `:latest`, pushed to ghcr.io,
+#            and the package visibility is flipped to public.
 #
-# After a successful run with `version` set, a VPS that runs
+# After a successful run, a VPS that runs
 #   docker compose pull && docker compose up -d
 # picks up the new image. Pin a specific release by exporting
 # IMAGE_TAG=v0.451.0 before `docker compose up`.
-#
-# Local-build convenience: on a Linux host with Node 24 + Docker, you can skip
-# this workflow entirely and run
-#   node scripts/build-server-docker-image.mjs
-# which builds the same image locally.
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release tag without leading 'v' (e.g. 0.451.0). Leave blank to build only without pushing."
-        required: false
-        default: ""
+        description: "Release tag without leading 'v' (e.g. 0.451.0). Required."
+        required: true
 
 jobs:
   build:
@@ -75,15 +69,7 @@ jobs:
           docker logs hanaagent-smoke || true
           docker stop hanaagent-smoke || true
 
-      - name: Skip publish (no version input)
-        id: skip
-        if: inputs.version == ''
-        run: |
-          echo "No version provided; skipping push."
-          echo "skipped=true" >> "$GITHUB_OUTPUT"
-
       - name: Login to ghcr.io
-        if: inputs.version != ''
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -91,7 +77,6 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Re-tag and push
-        if: inputs.version != ''
         env:
           VERSION: ${{ inputs.version }}
         run: |
@@ -104,7 +89,6 @@ jobs:
           done
 
       - name: Set package visibility to public
-        if: inputs.version != ''
         env:
           OWNER: ${{ github.repository_owner }}
           REPO: ${{ github.event.repository.name }}
