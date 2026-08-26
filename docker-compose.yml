@@ -53,8 +53,10 @@ services:
       - "127.0.0.1:7777:7777"
     environment:
       HANA_HOME: /hana/home
-      HOST: 0.0.0.0
-      PORT: 7777
+      # server reads HANA_HOST/HANA_PORT (not HOST/PORT) — see
+      # server/index.ts:353 and core/server-network-config.ts:77.
+      HANA_HOST: 0.0.0.0
+      HANA_PORT: 7777
       LOG_LEVEL: ${LOG_LEVEL:-info}
       TZ: ${TZ:-UTC}
     volumes:
